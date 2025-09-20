@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import colormaps
 
-resolution = 100
+import plotly.graph_objects as go
+
+resolution = 500
 graph_folder_name = "graphs_files"
 
 class FunctionVisualizer:
@@ -36,7 +38,7 @@ class FunctionVisualizer:
   def rastrigin(self, x):
     sum_bracket = np.sum(np.square(x) - 10*np.cos(2*np.pi*x))
     
-    return 10+self.d + sum_bracket
+    return 10*self.d + sum_bracket
   
   def rosenbrock(self, x):
     return np.sum(100 * np.square(x[1:] - np.square(x[:-1])) + (np.square(x[:-1] - 1)))
@@ -119,11 +121,12 @@ class FunctionVisualizer:
         Z[i, j] = self.function_type(point)
     return X, Y, Z
   
+  """
   def visualise(self, X, Y, Z, label, highlight_points=None):
     fig = plt.figure()
     ax = fig.add_subplot(projection='3d')
     
-    ax.plot_surface(X, Y, Z, cmap='jet', edgecolor='k', linewidth=0.5, alpha=0.9) 
+    ax.plot_surface(X, Y, Z, cmap='jet', edgecolor='k', linewidth=0.5, alpha=0.5, zorder=10) 
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_zlabel('f(x)')
@@ -136,11 +139,43 @@ class FunctionVisualizer:
     ax.view_init(elev= 25, azim=-120)
     
     if highlight_points is not None:
-      ax.scatter(highlight_points[0], highlight_points[1], highlight_points[2], color = "red", s=50, label=label)
-      ax.legend()
+      ax.scatter(highlight_points[0], highlight_points[1], highlight_points[2], color = "red", s=150, depthshade=True, label=label, edgecolor='k', linewidth=1.8, zorder=100)
     
     plt.show()
     return
+  """
+  
+  def visualise(self, X, Y, Z, label, highlight_points=None):
+      fig = go.Figure()
+      
+      # Přidání povrchu (surface)
+      fig.add_trace(go.Surface(x=X, y=Y, z=Z, opacity=1, colorscale='jet', showscale=False))
+      
+      # Přidání scatter bodu (pokud existuje)
+      if highlight_points is not None:
+          fig.add_trace(go.Scatter3d(
+              x=[highlight_points[0]], y=[highlight_points[1]], z=[highlight_points[2]],
+              mode='markers', marker=dict(size=10, color='red', symbol='circle', line=dict(color='black', width=2)),
+              name=label
+          ))
+      
+      # Nastavení layoutu (titulek, osy, pohled)
+      fig.update_layout(
+          title=f'{self.name.capitalize()} function',
+          scene=dict(
+              xaxis_title='x', yaxis_title='y', zaxis_title='f(x)',
+              xaxis=dict(range=[self.lB, self.uB]),
+              yaxis=dict(range=[self.lB, self.uB]),
+              zaxis=dict(range=[Z.min(), Z.max()]),
+              aspectmode='cube',  # Zachová proporce
+              camera=dict(
+                eye=dict(x=-1.2, y=-1.2, z=0.8)
+              )
+          ),
+          margin=dict(l=80, r=80, t=100, b=80)
+      )
+      fig.show(renderer="browser")
+      return
   
   def compute(self):
     os.makedirs(graph_folder_name, exist_ok=True)
@@ -162,7 +197,7 @@ class FunctionVisualizer:
   
   
   #ALGORITHMS
-  def blind_search(self, iterations=100):    
+  def blind_search(self, iterations=50):    
     X, Y, Z = self.compute()
     
     best_x = None
@@ -173,13 +208,46 @@ class FunctionVisualizer:
         if f_val < best_f:
             best_f = f_val
             best_x = candidate
-    print(f"Best found point: {best_x}, value: {best_f}")
+    
+    
     coordinates = np.append(best_x, best_f)
     
     self.visualise(X, Y, Z, "Blind search algorithm", coordinates)
     
     return
   
+  def hill_climb(self, neighbours=100, steps=100, step_size=10):
+    X, Y, Z = self.compute()
+
+    # Inicializace náhodného startu
+    current = np.random.uniform(self.lB, self.uB, self.d)
+    current_value = self.function_type(current)
+
+    for _ in range(steps):
+        best_candidate = current
+        best_value = current_value
+
+        for _ in range(neighbours):
+            # Vytvoření souseda s malou náhodnou odchylkou
+            candidate = current + np.random.uniform(-step_size, step_size, self.d)
+            candidate = np.clip(candidate, self.lB, self.uB)  # udržení v mezích
+            value = self.function_type(candidate)
+
+            if value < best_value:
+                best_candidate = candidate
+                best_value = value
+
+        # Pokud se zlepšilo, posuň se
+        if best_value < current_value:
+            current = best_candidate
+            current_value = best_value
+        else:
+            break  # žádné zlepšení → konec
+
+    print(f"Hill climb result: {current}, f_value: {current_value}")
+    coordinates = np.append(current, current_value)
+    self.visualise(X, Y, Z, "Hill climb algorithm", coordinates)
+    return
   #ALGORITHMS END
 
 
@@ -189,32 +257,31 @@ class FunctionVisualizer:
 print("Start")
 
 sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
-sphere.blind_search()
+sphere.hill_climb()
 
 
 ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
-ackley.blind_search()
+ackley.hill_climb()
 
 rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
-rastrigin.blind_search()
+rastrigin.hill_climb()
 
-"""
+
 rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
-rosenbrock.compute()
+rosenbrock.hill_climb()
 
 #zoom, normal -600, 600
 griewank = FunctionVisualizer("griewank", 2, -10, 10)
-griewank.compute()
+griewank.hill_climb()
 
 schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
-schwefel.compute()
+schwefel.hill_climb()
 
 levy = FunctionVisualizer("levy", 2, -10, 10)
-levy.compute()
+levy.hill_climb()
 
 michalewicz= FunctionVisualizer("michalewicz", 2, 0, np.pi)
-michalewicz.compute()
+michalewicz.hill_climb()
 
 zakharov= FunctionVisualizer("zakharov", 2, -10, 10)
-zakharov.compute()
-"""
+zakharov.hill_climb()
