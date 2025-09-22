@@ -17,8 +17,6 @@ class FunctionVisualizer:
     self.uB = upper_bound
     
     self.mk = make_new_file
-    self.parameters = np.zeros(self.d) #solution parameters
-    self.f = np.inf  # objective function evaluation
 
 
   #FUNCTIONS
@@ -121,30 +119,6 @@ class FunctionVisualizer:
         Z[i, j] = self.function_type(point)
     return X, Y, Z
   
-  """
-  def visualise(self, X, Y, Z, label, highlight_points=None):
-    fig = plt.figure()
-    ax = fig.add_subplot(projection='3d')
-    
-    ax.plot_surface(X, Y, Z, cmap='jet', edgecolor='k', linewidth=0.5, alpha=0.5, zorder=10) 
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_zlabel('f(x)')
-    ax.set_title(f'{self.name.capitalize()} function')
-    
-    ax.set_xlim(self.lB, self.uB)
-    ax.set_ylim(self.lB, self.uB)
-    ax.set_zlim(Z.min(), Z.max())
-    
-    ax.view_init(elev= 25, azim=-120)
-    
-    if highlight_points is not None:
-      ax.scatter(highlight_points[0], highlight_points[1], highlight_points[2], color = "red", s=150, depthshade=True, label=label, edgecolor='k', linewidth=1.8, zorder=100)
-    
-    plt.show()
-    return
-  """
-  
   def visualise(self, X, Y, Z, label, highlight_points=None):
       fig = go.Figure()
       
@@ -153,10 +127,14 @@ class FunctionVisualizer:
       
       # Přidání scatter bodu (pokud existuje)
       if highlight_points is not None:
+          x_vals = highlight_points[0]
+          y_vals = highlight_points[1]
+          z_vals = highlight_points[2]
           fig.add_trace(go.Scatter3d(
-              x=[highlight_points[0]], y=[highlight_points[1]], z=[highlight_points[2]],
-              mode='markers', marker=dict(size=10, color='red', symbol='circle', line=dict(color='black', width=2)),
-              name=label
+              x=x_vals, y=y_vals, z=z_vals,
+              mode='lines+markers',
+              marker=dict(size=4, color='red'),
+              line=dict(color='red', width=4)
           ))
       
       # Nastavení layoutu (titulek, osy, pohled)
@@ -210,18 +188,23 @@ class FunctionVisualizer:
             best_x = candidate
     
     
-    coordinates = np.append(best_x, best_f)
+    coordinates = np.array([[best_x[0]], [best_x[1]], [best_f]])
     
     self.visualise(X, Y, Z, "Blind search algorithm", coordinates)
     
     return
   
-  def hill_climb(self, neighbours=100, steps=100, step_size=10):
+  def hill_climb(self, neighbours=10, steps=100, step_size=0.1):
     X, Y, Z = self.compute()
 
     # Inicializace náhodného startu
     current = np.random.uniform(self.lB, self.uB, self.d)
     current_value = self.function_type(current)
+    
+    # Seznamy pro ukládání historie
+    history_x = [current[0]]
+    history_y = [current[1]]
+    history_f = [current_value]
 
     for _ in range(steps):
         best_candidate = current
@@ -241,12 +224,15 @@ class FunctionVisualizer:
         if best_value < current_value:
             current = best_candidate
             current_value = best_value
+            history_x.append(current[0])
+            history_y.append(current[1])
+            history_f.append(current_value)
         else:
             break  # žádné zlepšení → konec
 
     print(f"Hill climb result: {current}, f_value: {current_value}")
-    coordinates = np.append(current, current_value)
-    self.visualise(X, Y, Z, "Hill climb algorithm", coordinates)
+    history_coord = np.array([history_x, history_y, history_f])
+    self.visualise(X, Y, Z, "Hill climb algorithm", history_coord)
     return
   #ALGORITHMS END
 
@@ -257,7 +243,7 @@ class FunctionVisualizer:
 print("Start")
 
 sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
-sphere.hill_climb()
+sphere.hill_climb
 
 
 ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
