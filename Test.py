@@ -115,7 +115,6 @@ class FunctionVisualizer:
         point = np.zeros(self.d)
         point[0] = X[i, j]
         point[1] = Y[i, j]
-        #print(point)
         Z[i, j] = self.function_type(point)
     return X, Y, Z
   
@@ -125,7 +124,7 @@ class FunctionVisualizer:
       # Přidání povrchu (surface)
       fig.add_trace(go.Surface(x=X, y=Y, z=Z, opacity=1, colorscale='jet', showscale=False))
       
-      # Přidání scatter bodu (pokud existuje)
+      # Přidání scatter bodů, pokud je předám
       if highlight_points is not None:
           x_vals = highlight_points[0]
           y_vals = highlight_points[1]
@@ -133,7 +132,7 @@ class FunctionVisualizer:
           fig.add_trace(go.Scatter3d(
               x=x_vals, y=y_vals, z=z_vals,
               mode='lines+markers',
-              marker=dict(size=4, color='red'),
+              marker=dict(size=5, color='red'),
               line=dict(color='red', width=4)
           ))
       
@@ -243,7 +242,7 @@ class FunctionVisualizer:
 print("Start")
 
 sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
-sphere.hill_climb
+sphere.hill_climb()
 
 
 ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
