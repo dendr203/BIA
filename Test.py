@@ -154,6 +154,7 @@ class FunctionVisualizer:
       fig.show(renderer="browser")
       return
   
+  #compute graphs beforehand or get them from file
   def compute(self):
     os.makedirs(graph_folder_name, exist_ok=True)
     filepath = os.path.join(graph_folder_name, f"{self.name}_data.npz")
@@ -196,7 +197,7 @@ class FunctionVisualizer:
   def hill_climb(self, neighbours=10, steps=100, step_size=0.1):
     X, Y, Z = self.compute()
 
-    # Inicializace náhodného startu
+    # Inicializace náhodného startu (podle dimenze udělá current a current_value z current)
     current = np.random.uniform(self.lB, self.uB, self.d)
     current_value = self.function_type(current)
     
@@ -210,7 +211,7 @@ class FunctionVisualizer:
         best_value = current_value
 
         for _ in range(neighbours):
-            # Vytvoření souseda s malou náhodnou odchylkou
+            # Vytvoření souseda s náhodnou odchylkou
             candidate = current + np.random.uniform(-step_size, step_size, self.d)
             candidate = np.clip(candidate, self.lB, self.uB)  # udržení v mezích
             value = self.function_type(candidate)
