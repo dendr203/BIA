@@ -121,7 +121,7 @@ class FunctionVisualizer:
                 Z[i, j] = self.function_type(point)
         return X, Y, Z
 
-    def visualise(self, X, Y, Z, label, highlight_points=None, history_temp=None):
+    def visualise(self, X, Y, Z, label, highlight_points=None, history_temp=None, best_point=None):
         fig = go.Figure()
 
         # Přidání povrchu (surface)
@@ -156,6 +156,15 @@ class FunctionVisualizer:
                         name=label
                     )
                 )
+        
+        if best_point is not None:
+            bx, by, bf = best_point
+            fig.add_trace(go.Scatter3d(
+                x=[bx], y=[by], z=[bf],
+                mode="markers",
+                marker=dict(size=8, color="lime", symbol="diamond"),
+                name="Best point"
+        ))
 
         # Nastavení layoutu (titulek, osy, pohled)
         fig.update_layout(
@@ -254,15 +263,18 @@ class FunctionVisualizer:
         self.visualise(X, Y, Z, "Hill climb algorithm", history_coord)
         return
 
-    def simulated_annealing(self, initial_temp=100, final_temp=1, alpha=0.95, steps_per_temp=10):
+    def simulated_annealing(self, initial_temp=100, final_temp=1, alpha=0.95, steps_per_temp=10, sigma=1.0):
         X, Y, Z = self.compute()
 
+        # vytvoření náhodného startovacího bodu v rozmezí funkce
         current = np.random.uniform(self.lB, self.uB, self.d)
         current_value = self.function_type(current)
 
+        # tento start je zároveň nejlepší při začátku
         best = current.copy()
         best_value = current_value
 
+        # inicializace teploty a historie
         temp = initial_temp
         history_temp = [initial_temp]
 
@@ -270,15 +282,18 @@ class FunctionVisualizer:
         history_y = [current[1]]
         history_f = [current_value]
 
+        # hlavní smyčka ochlazování
         while temp > final_temp:
+            # pro každý krok teploty proveď několik iterací
             for _ in range(steps_per_temp):
-                candidate = current + np.random.uniform(-1, 1, self.d) * temp / initial_temp
+                # vytvoření kandidáta od current s náhodnou odchylkou závislou na sigmě
+                candidate = current + np.random.normal(0, sigma, self.d)
                 candidate = np.clip(candidate, self.lB, self.uB)
                 value = self.function_type(candidate)
 
                 delta = value - current_value
 
-                # Přijmi lepší nebo horší s pravděpodobností
+                # Přijmi lepší (funkční hodnotu kandidáta) nebo horší s pravděpodobností podle Boltzmannovy distribuce
                 if delta < 0 or np.random.rand() < np.exp(-delta / temp):
                     current = candidate
                     current_value = value
@@ -288,6 +303,7 @@ class FunctionVisualizer:
                     history_f.append(current_value)
                     history_temp.append(temp)
 
+                    # aktualizace nejlepšího řešení, pokud je lepší jak dosavadní nejlepší
                     if current_value < best_value:
                         best = current.copy()
                         best_value = current_value
@@ -295,7 +311,7 @@ class FunctionVisualizer:
             
         print(f"Simulated annealing result: {best}, f_value: {best_value}")
         history_coord = np.array([history_x, history_y, history_f])
-        self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp)
+        self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp, best_point=(best[0], best[1], best_value))
         return
 
     # ALGORITHMS END
@@ -347,22 +363,22 @@ def hill_climb_all():
 
 def simulated_annealing_all():
     sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
-    sphere.simulated_annealing()
+    sphere.simulated_annealing(sigma=0.5)
     ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
-    ackley.simulated_annealing()
+    ackley.simulated_annealing(sigma=1.0)
     rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
-    rastrigin.simulated_annealing()
+    rastrigin.simulated_annealing(sigma=0.5)
     rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
-    rosenbrock.simulated_annealing()
+    rosenbrock.simulated_annealing(sigma=0.1)
     # zoom, normal -600, 600
     griewank = FunctionVisualizer("griewank", 2, -10, 10)
     griewank.simulated_annealing()
     schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
-    schwefel.simulated_annealing()
+    schwefel.simulated_annealing(sigma=20.0)
     levy = FunctionVisualizer("levy", 2, -10, 10)
     levy.simulated_annealing()
     michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
-    michalewicz.simulated_annealing()
+    michalewicz.simulated_annealing(sigma=0.1)
     zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
     zakharov.simulated_annealing()
 
