@@ -9,8 +9,7 @@ graph_folder_name = "graphs_files"
 
 class FunctionVisualizer:
     def __init__(
-        self, func_name, dimensions, lower_bound, upper_bound, make_new_file=False
-    ):
+        self, func_name, dimensions, lower_bound, upper_bound, make_new_file=False):
         self.name = func_name
         self.d = dimensions
         self.lB = lower_bound  # we will use the same bounds for all parameters
@@ -123,6 +122,9 @@ class FunctionVisualizer:
 
     def visualise(self, X, Y, Z, label, highlight_points=None, history_temp=None, best_point=None):
         fig = go.Figure()
+        
+        z_min = float(np.nanmin(Z))
+        z_max = float(np.nanmax(Z))
 
         # Přidání povrchu (surface)
         fig.add_trace(
@@ -134,6 +136,9 @@ class FunctionVisualizer:
             x_vals = highlight_points[0]
             y_vals = highlight_points[1]
             z_vals = highlight_points[2]
+            
+            z_min = min(z_min, np.min(z_vals))
+            z_max = max(z_max, np.max(z_vals))
             
             if history_temp is not None:
                 fig.add_trace(go.Scatter3d(
@@ -159,13 +164,30 @@ class FunctionVisualizer:
         
         if best_point is not None:
             bx, by, bf = best_point
+            print(f"Best point: x={bx}, y={by}, f={bf}")
             fig.add_trace(go.Scatter3d(
                 x=[bx], y=[by], z=[bf],
                 mode="markers",
-                marker=dict(size=8, color="lime", symbol="diamond"),
-                name="Best point"
+                marker=dict(
+                    size=10,
+                    color="lime",
+                    symbol="diamond",
+                    line=dict(
+                        color="black",
+                        width=2)
+                    ),
+                name="Best point",
+                text=["BEST"],
+                textposition="top center",
+                hoverinfo="text+x+y+z"
         ))
-
+        
+        if best_point is not None:
+        # drobné rozšíření rozsahu o margin
+            margin = 0.05 * max(abs(z_max - z_min), 1e-6)
+            z_min = min(z_min, bf) - margin
+            z_max = max(z_max, bf) + margin
+        
         # Nastavení layoutu (titulek, osy, pohled)
         fig.update_layout(
             title=f"{self.name.capitalize()} function",
@@ -175,7 +197,7 @@ class FunctionVisualizer:
                 zaxis_title="f(x)",
                 xaxis=dict(range=[self.lB, self.uB]),
                 yaxis=dict(range=[self.lB, self.uB]),
-                zaxis=dict(range=[Z.min(), Z.max()]),
+                zaxis=dict(range=[z_min, z_max]),
                 aspectmode="cube",  # Zachová proporce
                 camera=dict(eye=dict(x=-1.2, y=-1.2, z=0.8)),
             ),
@@ -314,6 +336,65 @@ class FunctionVisualizer:
         self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp, best_point=(best[0], best[1], best_value))
         return
 
+    def differencial_evolution(self, pop_size=15, generations=100, F=0.1, CR=0.5):
+        X, Y, Z = self.compute()
+        
+        # inicializace populace (pop_size x d)
+        pop = np.random.uniform(self.lB, self.uB, size=(pop_size, self.d))
+        fitness = np.array([self.function_type(ind) for ind in pop])
+
+        # počáteční nejlepší
+        best_idx = np.argmin(fitness)
+        best = pop[best_idx].copy()
+        best_val = fitness[best_idx]
+        
+        # historie nejlepších pro vizualizaci
+        best_x_history = [best[0]]
+        best_y_history = [best[1]]
+        best_f_history = [best_val]
+        
+        for gen in range(generations):
+            for i in range(pop_size):
+                # výběr tří různé index kromě i
+                idxs = list(range(pop_size))
+                idxs = [j for j in range(pop_size) if j != i]
+                r1, r2, r3 = np.random.choice(idxs, 3, replace=False)
+                
+                xr1 = pop[r1]
+                xr2 = pop[r2]
+                xr3 = pop[r3]
+                
+                # vytvoření mutanta + clip do hranic
+                mutant = xr1 + F * (xr2 - xr3)
+                mutant = np.clip(mutant, self.lB, self.uB)
+
+                # binomální křížení s cílem vytvořit trial vector + zajištění, že alespoň jeden prvek pochází z mutanta
+                cross_points = np.random.rand(self.d) < CR
+                if not np.any(cross_points):
+                    cross_points[np.random.randint(0, self.d)] = True
+                trial = np.where(cross_points, mutant, pop[i])
+                
+                # selekce: pokud je trial lepší než cílový jedinec, nahradí ho
+                trial_fitness = self.function_type(trial)
+                if trial_fitness < fitness[i]:
+                    pop[i] = trial
+                    fitness[i] = trial_fitness
+                    
+                    # aktualizace nejlepšího řešení
+                    if trial_fitness < best_val:
+                        best = trial.copy()
+                        best_val = trial_fitness
+
+            best_x_history.append(best[0])
+            best_y_history.append(best[1])
+            best_f_history.append(best_val)
+            #print(f"Generation {gen+1}/{generations}, Best Value: {best_val}")
+        
+        print(f"Differential Evolution result: {best}, f_value: {best_val}")
+        history_coord = np.array([best_x_history, best_y_history, best_f_history])
+        self.visualise(X, Y, Z, "Differential Evolution", highlight_points=history_coord, best_point=(best[0], best[1], best_val))
+        return
+
     # ALGORITHMS END
 
 
@@ -382,10 +463,30 @@ def simulated_annealing_all():
     zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
     zakharov.simulated_annealing()
 
+def differencial_eveolution_all():
+    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+    sphere.differencial_evolution()
+    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley.differencial_evolution()
+    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin.differencial_evolution()
+    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock.differencial_evolution()
+    # zoom, normal -600, 600
+    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank.differencial_evolution()
+    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel.differencial_evolution()
+    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy.differencial_evolution()
+    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz.differencial_evolution()
+    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov.differencial_evolution()
 
 # ALGORITHMS MASS CALL
 
 
 if __name__ == "__main__":
     print("Start")
-    simulated_annealing_all()
+    differencial_eveolution_all()

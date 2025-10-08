@@ -4,8 +4,7 @@ import plotly.graph_objects as go
 
 class TSP:
     def __init__(
-        self, cities, population_size=100, generations=200, mutation_rate=0.02
-    ):
+        self, cities, population_size=100, generations=200, mutation_rate=0.02):
         self.cities = cities
         self.population_size = population_size
         self.generations = generations
@@ -19,16 +18,12 @@ class TSP:
         dist_matrix = np.zeros((self.n, self.n))
         for i in range(self.n):
             for j in range(self.n):
-                dist_matrix[i, j] = np.linalg.norm(
-                    np.array(self.cities[i]) - np.array(self.cities[j])
-                )
+                dist_matrix[i, j] = np.linalg.norm(np.array(self.cities[i]) - np.array(self.cities[j]))
         return dist_matrix
 
     # Spočítá celkovou délku dané cesty (včetně návratu do výchozího města)
     def route_distance(self, route):
-        return sum(
-            self.dist_matrix[route[i]][route[(i + 1) % self.n]] for i in range(self.n)
-        )
+        return sum(self.dist_matrix[route[i]][route[(i + 1) % self.n]] for i in range(self.n))
 
     # Převrácená hodnota vzdálenosti - čím kratší cesta, tím vyšší fittnes
     def fitness(self, population):
@@ -36,9 +31,7 @@ class TSP:
 
     # Generace náhodné permutace měst jako počáteční stav
     def initial_population(self):
-        return [
-            np.random.permutation(self.n).tolist() for _ in range(self.population_size)
-        ]
+        return [np.random.permutation(self.n).tolist() for _ in range(self.population_size)]
 
     # Ze 3 náhodných jedinců vybere toho s nejlepším fitness
     def select_parents(self, population, fitness_scores):
@@ -154,9 +147,7 @@ def GA_for_TSP():
     print("Start GA for TSP")
     n_cities = 20
 
-    cities = [
-        (np.random.uniform(0, 100), np.random.uniform(0, 100)) for _ in range(n_cities)
-    ]
+    cities = [(np.random.uniform(0, 100), np.random.uniform(0, 100)) for _ in range(n_cities)]
 
     tsp = TSP(cities, population_size=100, generations=200, mutation_rate=0.02)
 
