@@ -120,7 +120,7 @@ class FunctionVisualizer:
                 Z[i, j] = self.function_type(point)
         return X, Y, Z
 
-    def visualise(self, X, Y, Z, label, highlight_points=None, history_temp=None, best_point=None):
+    def visualise(self, X, Y, Z, label, highlight_points=None, history_temp=None, best_point=None, migration_paths=None):
         fig = go.Figure()
         
         z_min = float(np.nanmin(Z))
@@ -187,6 +187,17 @@ class FunctionVisualizer:
             margin = 0.05 * max(abs(z_max - z_min), 1e-6)
             z_min = min(z_min, bf) - margin
             z_max = max(z_max, bf) + margin
+        
+        if migration_paths is not None:
+            for path in migration_paths:
+                fig.add_trace(go.Scatter3d(
+                    x=path[:, 0],
+                    y=path[:, 1],
+                    z=[self.function_type(p) for p in path],
+                    mode='lines',
+                    line=dict(color='gray', width=2),
+                    name='Migration Path'
+                ))
         
         # Nastavení layoutu (titulek, osy, pohled)
         fig.update_layout(
@@ -336,12 +347,14 @@ class FunctionVisualizer:
         self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp, best_point=(best[0], best[1], best_value))
         return
 
-    def differencial_evolution(self, pop_size=15, generations=100, F=0.1, CR=0.5):
+    def differencial_evolution(self, pop_size=15, generations=200, F=0.8, CR=0.8):
         X, Y, Z = self.compute()
         
         # inicializace populace (pop_size x d)
         pop = np.random.uniform(self.lB, self.uB, size=(pop_size, self.d))
+        print("Populace inicializacni: ", pop)
         fitness = np.array([self.function_type(ind) for ind in pop])
+        print("Fitnes populace inicializacni: ", fitness)
 
         # počáteční nejlepší
         best_idx = np.argmin(fitness)
@@ -364,7 +377,7 @@ class FunctionVisualizer:
                 xr2 = pop[r2]
                 xr3 = pop[r3]
                 
-                # vytvoření mutanta + clip do hranic
+                # vytvoření mutanta + clip do hranic => výsledek, bod mezi těmito třemi jedinci
                 mutant = xr1 + F * (xr2 - xr3)
                 mutant = np.clip(mutant, self.lB, self.uB)
 
@@ -395,6 +408,127 @@ class FunctionVisualizer:
         self.visualise(X, Y, Z, "Differential Evolution", highlight_points=history_coord, best_point=(best[0], best[1], best_val))
         return
 
+    def particle_swarm_optimization(self, swarm_size=15, migrations=100, w=0.7, c1=1.5, c2=1.5):
+        X, Y, Z = self.compute()
+        
+        #inicializace hejna
+        positions = np.random.uniform(self.lB, self.uB, size=(swarm_size, self.d))
+        velocities = np.zeros_like(positions)
+        fitness = np.array([self.function_type(ind) for ind in positions])
+        
+        
+        # paměť nejlepší pozice každé částice v hejnu
+        pbest_positions = positions.copy()
+        pbest_values = fitness.copy()
+        
+        # globální nejlepší
+        gbest_idx = np.argmin(fitness)
+        gbest_position = positions[gbest_idx].copy()
+        gbest_value = fitness[gbest_idx]
+        
+        # historie nejlepších pro vizualizaci
+        best_x_history = [gbest_position[0]]
+        best_y_history = [gbest_position[1]]
+        best_f_history = [gbest_value]
+        
+        
+        for gen in range(migrations):
+            for i in range(swarm_size):
+                r1 = np.random.rand(self.d)
+                r2 = np.random.rand(self.d)
+                
+                # aktualizace rychlostí
+                velocities[i] = (
+                    w * velocities[i] 
+                    + c1 * r1 * (pbest_positions[i] - positions[i])
+                    + c2 * r2 * (gbest_position - positions[i])
+                    )
+                
+                # aktualizace pozice + clip
+                positions[i] += velocities[i]
+                positions[i] = np.clip(positions[i], self.lB, self.uB)
+                
+                current_fitness = self.function_type(positions[i])
+                if current_fitness < pbest_values[i]:
+                    pbest_positions[i] = positions[i].copy()
+                    pbest_values[i] = current_fitness
+                    
+                    if current_fitness < gbest_value:
+                        gbest_position = positions[i].copy()
+                        gbest_value = current_fitness
+            
+            best_x_history.append(gbest_position[0])
+            best_y_history.append(gbest_position[1])
+            best_f_history.append(gbest_value)
+        
+        print(f"PSO result: {gbest_position}, f_value: {gbest_value}")
+        history_coord = np.array([best_x_history, best_y_history, best_f_history])
+        self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(gbest_position[0], gbest_position[1], gbest_value))
+        return
+    
+    def SOMA_allToOne(self, pop_size=20, migrations=100, path_lenght=3.0, step=0.11, perturbation=0.4):
+        X, Y, Z = self.compute()
+        
+        #inicializace hejna
+        pop = np.random.uniform(self.lB, self.uB, size=(pop_size, self.d))
+        fitness = np.array([self.function_type(ind) for ind in pop])
+        
+        # historie nejlepších pro vizualizaci
+        best_idx = np.argmin(fitness)
+        leader = pop[best_idx].copy()
+        leader_val = fitness[best_idx]
+        
+        best_x_history = [leader[0]]
+        best_y_history = [leader[1]]
+        best_f_history = [leader_val]
+        
+        migration_paths = []
+        
+        for gen in range(migrations):
+            for i in range(pop_size):
+                if i == best_idx:
+                    continue # vůdce nemigruje
+                
+                path = []
+                t = 0.0
+                candidate = pop[i].copy()
+                best_candidate = candidate.copy()
+                best_candidate_val = self.function_type(candidate)
+                
+                while t <= path_lenght:
+                    # migrace směrem k vůdci
+                    step_vector = candidate + (leader - candidate) * t
+                    # perturbace
+                    step_vector += np.random.uniform(-perturbation, perturbation, self.d)
+                    step_vector = np.clip(step_vector, self.lB, self.uB)
+                    path.append(step_vector.copy())
+                    
+                    val = self.function_type(step_vector)
+                    if val < best_candidate_val:
+                        best_candidate = step_vector.copy()
+                        best_candidate_val = val
+                    
+                    t += step
+                
+                # aktualizace jedince
+                pop[i] = best_candidate
+                fitness[i] = best_candidate_val
+                migration_paths.append(np.array(path))
+            
+            # aktualizace vůdce
+            best_idx = np.argmin(fitness)
+            leader = pop[best_idx].copy()
+            leader_val = fitness[best_idx]
+            
+            best_x_history.append(leader[0])
+            best_y_history.append(leader[1])
+            best_f_history.append(leader_val)
+        
+        print(f"SOMA result: {leader}, f_value: {leader_val}")
+        history_coord = np.array([best_x_history, best_y_history, best_f_history])
+        self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(leader[0], leader[1], leader_val))
+        return
+    
     # ALGORITHMS END
 
 
@@ -419,7 +553,6 @@ def blind_search_all():
     zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
     zakharov.blind_search()
 
-
 def hill_climb_all():
     sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
     sphere.hill_climb()
@@ -440,7 +573,6 @@ def hill_climb_all():
     michalewicz.hill_climb()
     zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
     zakharov.hill_climb()
-
 
 def simulated_annealing_all():
     sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
@@ -484,9 +616,51 @@ def differencial_eveolution_all():
     zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
     zakharov.differencial_evolution()
 
+def particle_swarm_optimization_all():
+    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+    sphere.particle_swarm_optimization(w=0.5, c1=1.5, c2=1.5)
+    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley.particle_swarm_optimization()
+    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
+    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock.particle_swarm_optimization()
+    # zoom, normal -600, 600
+    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
+    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
+    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy.particle_swarm_optimization()
+    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz.particle_swarm_optimization()
+    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov.particle_swarm_optimization()
+
+def SOMA_allToOne_all():
+    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+    sphere.SOMA_allToOne()
+    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley.SOMA_allToOne()
+    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin.SOMA_allToOne()
+    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock.SOMA_allToOne()
+    # zoom, normal -600, 600
+    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank.SOMA_allToOne()
+    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel.SOMA_allToOne()
+    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy.SOMA_allToOne()
+    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz.SOMA_allToOne()
+    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov.SOMA_allToOne()
+
 # ALGORITHMS MASS CALL
 
 
 if __name__ == "__main__":
     print("Start")
-    differencial_eveolution_all()
+    SOMA_allToOne_all()
