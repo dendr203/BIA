@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import random
 
 import plotly.graph_objects as go
 
@@ -347,17 +348,19 @@ class FunctionVisualizer:
         self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp, best_point=(best[0], best[1], best_value))
         return
 
-    def differencial_evolution(self, pop_size=15, generations=200, F=0.8, CR=0.8):
+    def differencial_evolution(self, pop_size=15, generations=20, F=0.8, CR=0.8):
+        #F (mutation faktor) - větší = agresivnější průzkum
+        #CR (crossover rate) - pravděpodobnost křížení, tedy větší = více prvků beru z mutanta, menší je konzervativnější
+        
         X, Y, Z = self.compute()
         
-        # inicializace populace (pop_size x d)
+        # inicializace populace (pop_size x d) náhodných vektorů v d dimenzích
         pop = np.random.uniform(self.lB, self.uB, size=(pop_size, self.d))
-        print("Populace inicializacni: ", pop)
         fitness = np.array([self.function_type(ind) for ind in pop])
-        print("Fitnes populace inicializacni: ", fitness)
 
-        # počáteční nejlepší
-        best_idx = np.argmin(fitness)
+        # počáteční bod náhodně vybraný z předem vypočítaných pro lepší vizualizaci algoritmů
+        # best_idx = np.argmin(fitness)
+        best_idx = random.randint(0, len(fitness))
         best = pop[best_idx].copy()
         best_val = fitness[best_idx]
         
@@ -377,7 +380,7 @@ class FunctionVisualizer:
                 xr2 = pop[r2]
                 xr3 = pop[r3]
                 
-                # vytvoření mutanta + clip do hranic => výsledek, bod mezi těmito třemi jedinci
+                # vytvoření mutanta (DE/rand/1/bin) + clip do hranic => výsledek, bod mezi těmito třemi jedinci
                 mutant = xr1 + F * (xr2 - xr3)
                 mutant = np.clip(mutant, self.lB, self.uB)
 
@@ -401,14 +404,17 @@ class FunctionVisualizer:
             best_x_history.append(best[0])
             best_y_history.append(best[1])
             best_f_history.append(best_val)
-            #print(f"Generation {gen+1}/{generations}, Best Value: {best_val}")
         
         print(f"Differential Evolution result: {best}, f_value: {best_val}")
         history_coord = np.array([best_x_history, best_y_history, best_f_history])
         self.visualise(X, Y, Z, "Differential Evolution", highlight_points=history_coord, best_point=(best[0], best[1], best_val))
         return
 
-    def particle_swarm_optimization(self, swarm_size=15, migrations=100, w=0.7, c1=1.5, c2=1.5):
+    def particle_swarm_optimization(self, swarm_size=15, migrations=100, w=0.7, c1=1.5, c2=1.0):
+        #W (setrvačnost) - větší = lepší pokrytí prostoru
+        #c1 (vliv vlastní paměti) - vysoké = částice se drží své pozice
+        #c2 (vliv globálního minima) - vysoké = částice se stahují ke globálnímu řešení
+        
         X, Y, Z = self.compute()
         
         #inicializace hejna
@@ -421,8 +427,9 @@ class FunctionVisualizer:
         pbest_positions = positions.copy()
         pbest_values = fitness.copy()
         
-        # globální nejlepší
-        gbest_idx = np.argmin(fitness)
+        # globální nejlepší - v 0 iteraci se vybere náhodný nejlepší z předpočítených (lepší pro vizualizaci algoritmu)
+        #gbest_idx = np.argmin(fitness)
+        gbest_idx = random.randint(0, len(fitness))
         gbest_position = positions[gbest_idx].copy()
         gbest_value = fitness[gbest_idx]
         
@@ -437,11 +444,11 @@ class FunctionVisualizer:
                 r1 = np.random.rand(self.d)
                 r2 = np.random.rand(self.d)
                 
-                # aktualizace rychlostí
+                # aktualizace rychlosti
                 velocities[i] = (
-                    w * velocities[i] 
-                    + c1 * r1 * (pbest_positions[i] - positions[i])
-                    + c2 * r2 * (gbest_position - positions[i])
+                    w * velocities[i]                                   #setrvačnost - částečně zachová směr pohybu
+                    + c1 * r1 * (pbest_positions[i] - positions[i])     #kognitivní složka - táhne částice směrem k jejímu nejlepšímu nalezenému řešení
+                    + c2 * r2 * (gbest_position - positions[i])         #sociální složka - táhne částice směrem k (zatím) nejlepšímu řešení hejna
                     )
                 
                 # aktualizace pozice + clip
@@ -467,6 +474,10 @@ class FunctionVisualizer:
         return
     
     def SOMA_allToOne(self, pop_size=20, migrations=100, path_lenght=3.0, step=0.11, perturbation=0.4):
+        #path_lenght - délka přímky k vůdci hejna
+        #step - krok mezi body na trajektorii
+        #perturbation - náhodná odchylka v každé dimenzi přičená ke každému bodu na cestě 
+        
         X, Y, Z = self.compute()
         
         #inicializace hejna
@@ -474,7 +485,8 @@ class FunctionVisualizer:
         fitness = np.array([self.function_type(ind) for ind in pop])
         
         # historie nejlepších pro vizualizaci
-        best_idx = np.argmin(fitness)
+        # best_idx = np.argmin(fitness)
+        best_idx = random.randint(0, len(fitness))
         leader = pop[best_idx].copy()
         leader_val = fitness[best_idx]
         
@@ -498,7 +510,7 @@ class FunctionVisualizer:
                 while t <= path_lenght:
                     # migrace směrem k vůdci
                     step_vector = candidate + (leader - candidate) * t
-                    # perturbace
+                    # perturbace - aby se nešlo přesně po přímce a mohli jsme najít lepší minima
                     step_vector += np.random.uniform(-perturbation, perturbation, self.d)
                     step_vector = np.clip(step_vector, self.lB, self.uB)
                     path.append(step_vector.copy())
