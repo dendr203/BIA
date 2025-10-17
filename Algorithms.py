@@ -360,7 +360,7 @@ class FunctionVisualizer:
 
         # počáteční bod náhodně vybraný z předem vypočítaných pro lepší vizualizaci algoritmů
         # best_idx = np.argmin(fitness)
-        best_idx = random.randint(0, len(fitness))
+        best_idx = random.randint(0, len(fitness)-1)
         best = pop[best_idx].copy()
         best_val = fitness[best_idx]
         
@@ -429,7 +429,7 @@ class FunctionVisualizer:
         
         # globální nejlepší - v 0 iteraci se vybere náhodný nejlepší z předpočítených (lepší pro vizualizaci algoritmu)
         #gbest_idx = np.argmin(fitness)
-        gbest_idx = random.randint(0, len(fitness))
+        gbest_idx = random.randint(0, len(fitness)-1)
         gbest_position = positions[gbest_idx].copy()
         gbest_value = fitness[gbest_idx]
         
@@ -486,7 +486,7 @@ class FunctionVisualizer:
         
         # historie nejlepších pro vizualizaci
         # best_idx = np.argmin(fitness)
-        best_idx = random.randint(0, len(fitness))
+        best_idx = random.randint(0, len(fitness)-1)
         leader = pop[best_idx].copy()
         leader_val = fitness[best_idx]
         
@@ -539,6 +539,60 @@ class FunctionVisualizer:
         print(f"SOMA result: {leader}, f_value: {leader_val}")
         history_coord = np.array([best_x_history, best_y_history, best_f_history])
         self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(leader[0], leader[1], leader_val))
+        return
+    
+    def Firefly(self, n_fireflies=25, generations=100, alpha=0.3, beta0=1.0, gamma=1.0):
+        """
+        alpha - míra náhodnosti
+        beta0 - jak silně se světlušky přitahují (základní atraktivita)
+        gamma - jak rychle klesá atraktivita vzdálenosti (koeficient absorbce)
+        """
+        
+        X, Y, Z = self.compute()
+        
+        fireflies = np.random.uniform(self.lB, self.uB, (n_fireflies, self.d))
+        light_intensity = np.array([self.function_type(f) for f in fireflies])
+        
+        best_idx = random.randint(0, len(light_intensity)-1)
+        best = fireflies[best_idx].copy()
+        best_value = light_intensity[best_idx]
+        
+        history_x = [best[0]]
+        history_y = [best[1]]
+        history_f = [best_value]
+        
+        for gen in range(generations):
+            for i in range(n_fireflies):
+                for j in range(n_fireflies):
+                    #každou světlušku posunujeme blíže k nejlepšímu řešení 
+                    if light_intensity[j] < light_intensity[i]:
+                        # vzdálenost mezi světluškami i a j (euklid vzdálenost)
+                        r = np.linalg.norm(fireflies[i] - fireflies[j])
+                        
+                        # výpočet atraktivity která klesá se vzdáleností (podle vzorce)
+                        beta = beta0 / (1 + r)
+                        
+                        # pohyb k lepšímu řešení
+                        epsilon = np.random.normal(0, 1, self.d)
+                        fireflies[i] += beta * (fireflies[j] - fireflies[i]) + alpha * epsilon
+                        
+                        # ořezání do souřadnic
+                        fireflies[i] = np.clip(fireflies[i], self.lB, self.uB)
+                        
+                        # update řešení pro danou světlušku co se posunula
+                        light_intensity[i] = self.function_type(fireflies[i])
+                        if light_intensity[i] < best_value:
+                            best = fireflies[i].copy()
+                            best_value = light_intensity[i]
+
+            history_x.append(best[0])
+            history_y.append(best[1])
+            history_f.append(best_value)
+
+        print(f"Firefly result: {best}, f_value: {best_value}")
+        history_coord = np.array([history_x, history_y, history_f])
+        self.visualise(X, Y, Z, "Firefly algorithm", history_coord)
+        
         return
     
     # ALGORITHMS END
@@ -670,9 +724,29 @@ def SOMA_allToOne_all():
     zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
     zakharov.SOMA_allToOne()
 
+def Firefly_all():
+    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+    sphere.Firefly()
+    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley.Firefly()
+    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin.Firefly()
+    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock.Firefly()
+    # zoom, normal -600, 600
+    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank.Firefly()
+    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel.Firefly()
+    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy.Firefly()
+    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz.Firefly()
+    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov.Firefly()
 # ALGORITHMS MASS CALL
 
 
 if __name__ == "__main__":
     print("Start")
-    SOMA_allToOne_all()
+    Firefly_all()
