@@ -7,6 +7,8 @@ import plotly.graph_objects as go
 resolution = 500
 graph_folder_name = "graphs_files"
 
+visualiseYesNo = True
+
 
 class FunctionVisualizer:
     def __init__(
@@ -122,6 +124,9 @@ class FunctionVisualizer:
         return X, Y, Z
 
     def visualise(self, X, Y, Z, label, highlight_points=None, history_temp=None, best_point=None, migration_paths=None):
+        if not visualiseYesNo:
+            return
+        
         fig = go.Figure()
         
         z_min = float(np.nanmin(Z))
@@ -243,17 +248,26 @@ class FunctionVisualizer:
 
         best_x = None
         best_f = np.inf
+        
+        #multidemensial support
+        best_history = []
+        best_f_history = []
+        
         for _ in range(iterations):
             candidate = np.random.uniform(self.lB, self.uB, self.d)
             f_val = self.function_type(candidate)
             if f_val < best_f:
                 best_f = f_val
                 best_x = candidate
+                
+                best_history.append(best_x.copy())
+                best_f_history.append(best_f)
 
-        coordinates = np.array([[best_x[0]], [best_x[1]], [best_f]])
-
-        self.visualise(X, Y, Z, "Blind search algorithm", coordinates)
-
+        print(f"Blind search result: {best_x}, f_value: {best_f}")
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
+        self.visualise(X, Y, Z, "Blind search algorithm", history_coord)
         return
 
     def hill_climb(self, neighbours=10, steps=100, step_size=0.1):
@@ -262,16 +276,15 @@ class FunctionVisualizer:
         # Inicializace náhodného startu (podle dimenze udělá current a current_value z current)
         current = np.random.uniform(self.lB, self.uB, self.d)
         current_value = self.function_type(current)
-
-        # Seznamy pro ukládání historie
-        history_x = [current[0]]
-        history_y = [current[1]]
-        history_f = [current_value]
+        
+        best_candidate = current
+        best_value = current_value
+        
+        #multidemensial support
+        best_history = [current.copy()]
+        best_f_history = [best_value]
 
         for _ in range(steps):
-            best_candidate = current
-            best_value = current_value
-
             for _ in range(neighbours):
                 # Vytvoření souseda s náhodnou odchylkou
                 candidate = current + np.random.uniform(-step_size, step_size, self.d)
@@ -286,14 +299,15 @@ class FunctionVisualizer:
             if best_value < current_value:
                 current = best_candidate
                 current_value = best_value
-                history_x.append(current[0])
-                history_y.append(current[1])
-                history_f.append(current_value)
+                best_history.append(current.copy())
+                best_f_history.append(current_value)
             else:
                 break  # žádné zlepšení → konec
 
         print(f"Hill climb result: {current}, f_value: {current_value}")
-        history_coord = np.array([history_x, history_y, history_f])
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
         self.visualise(X, Y, Z, "Hill climb algorithm", history_coord)
         return
 
@@ -311,10 +325,10 @@ class FunctionVisualizer:
         # inicializace teploty a historie
         temp = initial_temp
         history_temp = [initial_temp]
-
-        history_x = [current[0]]
-        history_y = [current[1]]
-        history_f = [current_value]
+        
+        #multidemensial support
+        best_history = [best.copy()]
+        best_f_history = [best_value]
 
         # hlavní smyčka ochlazování
         while temp > final_temp:
@@ -331,20 +345,23 @@ class FunctionVisualizer:
                 if delta < 0 or np.random.rand() < np.exp(-delta / temp):
                     current = candidate
                     current_value = value
-
-                    history_x.append(current[0])
-                    history_y.append(current[1])
-                    history_f.append(current_value)
-                    history_temp.append(temp)
-
+                    
                     # aktualizace nejlepšího řešení, pokud je lepší jak dosavadní nejlepší
                     if current_value < best_value:
                         best = current.copy()
                         best_value = current_value
+            
+            best_history.append(best.copy())
+            best_f_history.append(best_value)
+            history_temp.append(temp)
             temp *= alpha  # ochlazení
             
+
+            
         print(f"Simulated annealing result: {best}, f_value: {best_value}")
-        history_coord = np.array([history_x, history_y, history_f])
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
         self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp, best_point=(best[0], best[1], best_value))
         return
 
@@ -359,14 +376,13 @@ class FunctionVisualizer:
         fitness = np.array([self.function_type(ind) for ind in pop])
 
         # počáteční bod náhodně vybraný z předem vypočítaných pro lepší vizualizaci algoritmů
-        # best_idx = np.argmin(fitness)
-        best_idx = random.randint(0, len(fitness)-1)
+        best_idx = np.argmin(fitness)
+        # best_idx = random.randint(0, len(fitness)-1)
         best = pop[best_idx].copy()
         best_val = fitness[best_idx]
         
-        # historie nejlepších pro vizualizaci
-        best_x_history = [best[0]]
-        best_y_history = [best[1]]
+        #multidemensial support
+        best_history = [best.copy()]
         best_f_history = [best_val]
         
         for gen in range(generations):
@@ -400,13 +416,14 @@ class FunctionVisualizer:
                     if trial_fitness < best_val:
                         best = trial.copy()
                         best_val = trial_fitness
-
-            best_x_history.append(best[0])
-            best_y_history.append(best[1])
+            
+            best_history.append(best.copy())
             best_f_history.append(best_val)
         
         print(f"Differential Evolution result: {best}, f_value: {best_val}")
-        history_coord = np.array([best_x_history, best_y_history, best_f_history])
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
         self.visualise(X, Y, Z, "Differential Evolution", highlight_points=history_coord, best_point=(best[0], best[1], best_val))
         return
 
@@ -428,16 +445,15 @@ class FunctionVisualizer:
         pbest_values = fitness.copy()
         
         # globální nejlepší - v 0 iteraci se vybere náhodný nejlepší z předpočítených (lepší pro vizualizaci algoritmu)
-        #gbest_idx = np.argmin(fitness)
-        gbest_idx = random.randint(0, len(fitness)-1)
+        gbest_idx = np.argmin(fitness)
+        #gbest_idx = random.randint(0, len(fitness)-1)
         gbest_position = positions[gbest_idx].copy()
         gbest_value = fitness[gbest_idx]
         
-        # historie nejlepších pro vizualizaci
-        best_x_history = [gbest_position[0]]
-        best_y_history = [gbest_position[1]]
-        best_f_history = [gbest_value]
         
+        #multidemensial support
+        best_history = [gbest_position.copy()]
+        best_f_history = [gbest_value]
         
         for gen in range(migrations):
             for i in range(swarm_size):
@@ -464,12 +480,13 @@ class FunctionVisualizer:
                         gbest_position = positions[i].copy()
                         gbest_value = current_fitness
             
-            best_x_history.append(gbest_position[0])
-            best_y_history.append(gbest_position[1])
+            best_history.append(gbest_position.copy())
             best_f_history.append(gbest_value)
         
         print(f"PSO result: {gbest_position}, f_value: {gbest_value}")
-        history_coord = np.array([best_x_history, best_y_history, best_f_history])
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
         self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(gbest_position[0], gbest_position[1], gbest_value))
         return
     
@@ -485,16 +502,16 @@ class FunctionVisualizer:
         fitness = np.array([self.function_type(ind) for ind in pop])
         
         # historie nejlepších pro vizualizaci
-        # best_idx = np.argmin(fitness)
-        best_idx = random.randint(0, len(fitness)-1)
+        best_idx = np.argmin(fitness)
+        #best_idx = random.randint(0, len(fitness)-1)
         leader = pop[best_idx].copy()
         leader_val = fitness[best_idx]
         
-        best_x_history = [leader[0]]
-        best_y_history = [leader[1]]
-        best_f_history = [leader_val]
-        
         migration_paths = []
+        
+        #multidemensial support
+        best_history = [leader.copy()]
+        best_f_history = [leader_val]
         
         for gen in range(migrations):
             for i in range(pop_size):
@@ -532,12 +549,13 @@ class FunctionVisualizer:
             leader = pop[best_idx].copy()
             leader_val = fitness[best_idx]
             
-            best_x_history.append(leader[0])
-            best_y_history.append(leader[1])
+            best_history.append(leader.copy())
             best_f_history.append(leader_val)
         
         print(f"SOMA result: {leader}, f_value: {leader_val}")
-        history_coord = np.array([best_x_history, best_y_history, best_f_history])
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
         self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(leader[0], leader[1], leader_val))
         return
     
@@ -553,13 +571,13 @@ class FunctionVisualizer:
         fireflies = np.random.uniform(self.lB, self.uB, (n_fireflies, self.d))
         light_intensity = np.array([self.function_type(f) for f in fireflies])
         
-        best_idx = random.randint(0, len(light_intensity)-1)
+        best_idx = np.argmin(light_intensity)
         best = fireflies[best_idx].copy()
         best_value = light_intensity[best_idx]
         
-        history_x = [best[0]]
-        history_y = [best[1]]
-        history_f = [best_value]
+        #multidemensial support
+        best_history = [best.copy()]
+        best_f_history = [best_value]
         
         for gen in range(generations):
             for i in range(n_fireflies):
@@ -585,12 +603,13 @@ class FunctionVisualizer:
                             best = fireflies[i].copy()
                             best_value = light_intensity[i]
 
-            history_x.append(best[0])
-            history_y.append(best[1])
-            history_f.append(best_value)
+            best_history.append(best.copy())
+            best_f_history.append(best_value)
 
         print(f"Firefly result: {best}, f_value: {best_value}")
-        history_coord = np.array([history_x, history_y, history_f])
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
         self.visualise(X, Y, Z, "Firefly algorithm", history_coord)
         
         return
@@ -599,154 +618,157 @@ class FunctionVisualizer:
 
 
 # ALGORITHMS MASS CALL
-def blind_search_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def blind_search_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.blind_search()
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
     ackley.blind_search()
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.blind_search()
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
     rosenbrock.blind_search()
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.blind_search()
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
     schwefel.blind_search()
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.blind_search()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.blind_search()
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.blind_search()
 
-def hill_climb_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def hill_climb_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.hill_climb()
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
-    ackley.hill_climb()
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
+    ackley.hill_climb(steps=400, step_size=1)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.hill_climb()
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
-    rosenbrock.hill_climb()
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
+    rosenbrock.hill_climb(step_size=1)
     # zoom, normal -600, 600
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.hill_climb()
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
-    schwefel.hill_climb()
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
+    schwefel.hill_climb(step_size=5)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.hill_climb()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.hill_climb()
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
-    zakharov.hill_climb()
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
+    zakharov.hill_climb(steps=400, step_size=1)
 
-def simulated_annealing_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def simulated_annealing_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.simulated_annealing(sigma=0.5)
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
     ackley.simulated_annealing(sigma=1.0)
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.simulated_annealing(sigma=0.5)
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
     rosenbrock.simulated_annealing(sigma=0.1)
-    # zoom, normal -600, 600
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.simulated_annealing()
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
     schwefel.simulated_annealing(sigma=20.0)
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.simulated_annealing()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.simulated_annealing(sigma=0.1)
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.simulated_annealing()
 
-def differencial_eveolution_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def differencial_eveolution_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.differencial_evolution()
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
     ackley.differencial_evolution()
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.differencial_evolution()
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
     rosenbrock.differencial_evolution()
-    # zoom, normal -600, 600
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.differencial_evolution()
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
     schwefel.differencial_evolution()
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.differencial_evolution()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.differencial_evolution()
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.differencial_evolution()
 
-def particle_swarm_optimization_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def particle_swarm_optimization_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.particle_swarm_optimization(w=0.5, c1=1.5, c2=1.5)
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
     ackley.particle_swarm_optimization()
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
     rosenbrock.particle_swarm_optimization()
-    # zoom, normal -600, 600
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
     schwefel.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.particle_swarm_optimization()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.particle_swarm_optimization()
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.particle_swarm_optimization()
 
-def SOMA_allToOne_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def SOMA_allToOne_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.SOMA_allToOne()
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
     ackley.SOMA_allToOne()
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.SOMA_allToOne()
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
     rosenbrock.SOMA_allToOne()
-    # zoom, normal -600, 600
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.SOMA_allToOne()
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
     schwefel.SOMA_allToOne()
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.SOMA_allToOne()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.SOMA_allToOne()
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.SOMA_allToOne()
 
-def Firefly_all():
-    sphere = FunctionVisualizer("sphere", 2, -5.12, 5.12)
+def Firefly_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
     sphere.Firefly()
-    ackley = FunctionVisualizer("ackley", 2, -32.768, 32.768)
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
     ackley.Firefly()
-    rastrigin = FunctionVisualizer("rastrigin", 2, -5.12, 5.12)
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
     rastrigin.Firefly()
-    rosenbrock = FunctionVisualizer("rosenbrock", 2, -2.048, 2.048)
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
     rosenbrock.Firefly()
-    # zoom, normal -600, 600
-    griewank = FunctionVisualizer("griewank", 2, -10, 10)
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
     griewank.Firefly()
-    schwefel = FunctionVisualizer("schwefel", 2, -500, 500)
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
     schwefel.Firefly()
-    levy = FunctionVisualizer("levy", 2, -10, 10)
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
     levy.Firefly()
-    michalewicz = FunctionVisualizer("michalewicz", 2, 0, np.pi)
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
     michalewicz.Firefly()
-    zakharov = FunctionVisualizer("zakharov", 2, -10, 10)
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.Firefly()
 # ALGORITHMS MASS CALL
 
+def callAllNoVis(dimesions):
+    blind_search_all(dimesions)
+    hill_climb_all(dimesions)
+    simulated_annealing_all(dimesions)
+    differencial_eveolution_all(dimesions)
+    particle_swarm_optimization_all(dimesions)
+    SOMA_allToOne_all(dimesions)
+    Firefly_all(dimesions)
 
 if __name__ == "__main__":
     print("Start")
-    Firefly_all()
+    Firefly_all(2)
