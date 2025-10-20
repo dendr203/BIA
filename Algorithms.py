@@ -1,13 +1,14 @@
 import os
 import numpy as np
 import random
+import pandas as pd
 
 import plotly.graph_objects as go
 
 resolution = 500
 graph_folder_name = "graphs_files"
 
-visualiseYesNo = True
+visualiseYesNo = False
 
 
 class FunctionVisualizer:
@@ -229,7 +230,8 @@ class FunctionVisualizer:
         filepath = os.path.join(graph_folder_name, f"{self.name}_data.npz")
 
         if os.path.exists(filepath) and not self.mk:
-            print(f"Loading cached data from existing file {self.name}_data.npz")
+            if visualiseYesNo:
+                print(f"Loading cached data from existing file {self.name}_data.npz")
             data = np.load(filepath)
             X = data["X"]
             Y = data["Y"]
@@ -365,7 +367,7 @@ class FunctionVisualizer:
         self.visualise(X, Y, Z, "Simulated annealing", history_coord, history_temp, best_point=(best[0], best[1], best_value))
         return
 
-    def differencial_evolution(self, pop_size=15, generations=20, F=0.8, CR=0.8):
+    def DE(self, pop_size=15, generations=20, F=0.8, CR=0.8, Max_OFE=None):
         #F (mutation faktor) - větší = agresivnější průzkum
         #CR (crossover rate) - pravděpodobnost křížení, tedy větší = více prvků beru z mutanta, menší je konzervativnější
         
@@ -420,14 +422,15 @@ class FunctionVisualizer:
             best_history.append(best.copy())
             best_f_history.append(best_val)
         
-        print(f"Differential Evolution result: {best}, f_value: {best_val}")
+        if visualiseYesNo:
+            print(f"Differential Evolution result: {best}, f_value: {best_val}")
         history_coord = np.array([  [v[0] for v in best_history],
                                     [v[1] for v in best_history],
                                     best_f_history ])
         self.visualise(X, Y, Z, "Differential Evolution", highlight_points=history_coord, best_point=(best[0], best[1], best_val))
-        return
+        return best_val
 
-    def particle_swarm_optimization(self, swarm_size=15, migrations=100, w=0.7, c1=1.5, c2=1.0):
+    def PSO(self, swarm_size=15, migrations=100, w=0.7, c1=1.5, c2=1.0, Max_OFE=None):
         #W (setrvačnost) - větší = lepší pokrytí prostoru
         #c1 (vliv vlastní paměti) - vysoké = částice se drží své pozice
         #c2 (vliv globálního minima) - vysoké = částice se stahují ke globálnímu řešení
@@ -438,6 +441,7 @@ class FunctionVisualizer:
         positions = np.random.uniform(self.lB, self.uB, size=(swarm_size, self.d))
         velocities = np.zeros_like(positions)
         fitness = np.array([self.function_type(ind) for ind in positions])
+        evaluations = swarm_size
         
         
         # paměť nejlepší pozice každé částice v hejnu
@@ -455,8 +459,12 @@ class FunctionVisualizer:
         best_history = [gbest_position.copy()]
         best_f_history = [gbest_value]
         
-        for gen in range(migrations):
+        gen = 0
+        while gen < migrations and (Max_OFE is None or evaluations < Max_OFE):
             for i in range(swarm_size):
+                if Max_OFE is not None and evaluations >= Max_OFE:
+                    break
+                
                 r1 = np.random.rand(self.d)
                 r2 = np.random.rand(self.d)
                 
@@ -472,6 +480,8 @@ class FunctionVisualizer:
                 positions[i] = np.clip(positions[i], self.lB, self.uB)
                 
                 current_fitness = self.function_type(positions[i])
+                evaluations += 1
+                
                 if current_fitness < pbest_values[i]:
                     pbest_positions[i] = positions[i].copy()
                     pbest_values[i] = current_fitness
@@ -482,15 +492,16 @@ class FunctionVisualizer:
             
             best_history.append(gbest_position.copy())
             best_f_history.append(gbest_value)
-        
-        print(f"PSO result: {gbest_position}, f_value: {gbest_value}")
+            gen += 1
+        if visualiseYesNo:
+            print(f"PSO result: {gbest_position}, f_value: {gbest_value}")
         history_coord = np.array([  [v[0] for v in best_history],
                                     [v[1] for v in best_history],
                                     best_f_history ])
         self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(gbest_position[0], gbest_position[1], gbest_value))
-        return
+        return gbest_value
     
-    def SOMA_allToOne(self, pop_size=20, migrations=100, path_lenght=3.0, step=0.11, perturbation=0.4):
+    def SOMA(self, pop_size=20, migrations=100, path_lenght=3.0, step=0.11, perturbation=0.4, Max_OFE=None):
         #path_lenght - délka přímky k vůdci hejna
         #step - krok mezi body na trajektorii
         #perturbation - náhodná odchylka v každé dimenzi přičená ke každému bodu na cestě 
@@ -500,6 +511,7 @@ class FunctionVisualizer:
         #inicializace hejna
         pop = np.random.uniform(self.lB, self.uB, size=(pop_size, self.d))
         fitness = np.array([self.function_type(ind) for ind in pop])
+        evaluations = pop_size
         
         # historie nejlepších pro vizualizaci
         best_idx = np.argmin(fitness)
@@ -513,7 +525,8 @@ class FunctionVisualizer:
         best_history = [leader.copy()]
         best_f_history = [leader_val]
         
-        for gen in range(migrations):
+        gen = 0
+        while gen < migrations and (Max_OFE is None or evaluations < Max_OFE):
             for i in range(pop_size):
                 if i == best_idx:
                     continue # vůdce nemigruje
@@ -523,6 +536,9 @@ class FunctionVisualizer:
                 candidate = pop[i].copy()
                 best_candidate = candidate.copy()
                 best_candidate_val = self.function_type(candidate)
+                evaluations += 1
+                if Max_OFE is not None and evaluations >= Max_OFE:
+                    break
                 
                 while t <= path_lenght:
                     # migrace směrem k vůdci
@@ -533,6 +549,10 @@ class FunctionVisualizer:
                     path.append(step_vector.copy())
                     
                     val = self.function_type(step_vector)
+                    evaluations += 1
+                    if Max_OFE is not None and evaluations >= Max_OFE:
+                        break
+                    
                     if val < best_candidate_val:
                         best_candidate = step_vector.copy()
                         best_candidate_val = val
@@ -543,6 +563,9 @@ class FunctionVisualizer:
                 pop[i] = best_candidate
                 fitness[i] = best_candidate_val
                 migration_paths.append(np.array(path))
+                
+                if Max_OFE is not None and evaluations >= Max_OFE:
+                    break
             
             # aktualizace vůdce
             best_idx = np.argmin(fitness)
@@ -551,15 +574,17 @@ class FunctionVisualizer:
             
             best_history.append(leader.copy())
             best_f_history.append(leader_val)
+            gen += 1
         
-        print(f"SOMA result: {leader}, f_value: {leader_val}")
+        if visualiseYesNo:
+            print(f"SOMA result: {leader}, f_value: {leader_val}")
         history_coord = np.array([  [v[0] for v in best_history],
                                     [v[1] for v in best_history],
                                     best_f_history ])
         self.visualise(X, Y, Z, "Particle Swarm Optimization", highlight_points=history_coord, best_point=(leader[0], leader[1], leader_val))
-        return
+        return leader_val
     
-    def Firefly(self, n_fireflies=25, generations=100, alpha=0.3, beta0=1.0, gamma=1.0):
+    def Firefly(self, n_fireflies=25, generations=100, alpha=0.3, beta0=1.0, gamma=1.0, Max_OFE=None):
         """
         alpha - míra náhodnosti
         beta0 - jak silně se světlušky přitahují (základní atraktivita)
@@ -570,6 +595,7 @@ class FunctionVisualizer:
         
         fireflies = np.random.uniform(self.lB, self.uB, (n_fireflies, self.d))
         light_intensity = np.array([self.function_type(f) for f in fireflies])
+        evaluations = len(fireflies)
         
         best_idx = np.argmin(light_intensity)
         best = fireflies[best_idx].copy()
@@ -579,7 +605,8 @@ class FunctionVisualizer:
         best_history = [best.copy()]
         best_f_history = [best_value]
         
-        for gen in range(generations):
+        gen = 0
+        while gen < generations and (Max_OFE is None or evaluations < Max_OFE):
             for i in range(n_fireflies):
                 for j in range(n_fireflies):
                     #každou světlušku posunujeme blíže k nejlepšímu řešení 
@@ -605,17 +632,133 @@ class FunctionVisualizer:
 
             best_history.append(best.copy())
             best_f_history.append(best_value)
+            gen += 1
 
-        print(f"Firefly result: {best}, f_value: {best_value}")
+        if visualiseYesNo:
+            print(f"Firefly result: {best}, f_value: {best_value}")
         history_coord = np.array([  [v[0] for v in best_history],
                                     [v[1] for v in best_history],
                                     best_f_history ])
-        self.visualise(X, Y, Z, "Firefly algorithm", history_coord)
-        
-        return
-    
+        self.visualise(X, Y, Z, "Firefly algorithm", highlight_points=history_coord, best_point=(best[0], best[1], best_value))
+        return best_value
     # ALGORITHMS END
+    
+    def TLBO(self, NP=30, Max_OFE=3000):
+        # generace studentů (populace)
+        students = np.random.uniform(self.lB, self.uB, (NP, self.d))
+        fitness = np.array([self.function_type(ind) for ind in students])
+        evaluations = NP
 
+        best_idx = np.argmin(fitness)
+        best = students[best_idx].copy()
+        best_value = fitness[best_idx]
+
+        while evaluations < Max_OFE:
+            # každý student se učí od učitele (nejlepšího jedince)
+            mean = np.mean(students, axis=0)
+            teacher = students[best_idx]
+            # teaching faktor (1 nebo 2)
+            TF = np.random.randint(1, 3)
+            
+            # Teaching phase 
+            for i in range(NP):
+                # studenti se posunou směrem k učiteli ale s různou intezitou (TF)
+                new = students[i] + np.random.rand(self.d) * (teacher - TF * mean)
+                new = np.clip(new, self.lB, self.uB)
+                new_fit = self.function_type(new)
+                evaluations += 1
+                if new_fit < fitness[i]:
+                    students[i] = new
+                    fitness[i] = new_fit
+                    if new_fit < best_value:
+                        best = new.copy()
+                        best_value = new_fit
+
+            # Learning phase
+            for i in range(NP):
+                # studenti se učí od sebe navzájem (výběr náhodného jiného studenta)
+                j = np.random.choice([x for x in range(NP) if x != i])
+                if fitness[i] < fitness[j]:
+                    diff = students[i] - students[j]
+                else:
+                    diff = students[j] - students[i]
+                new = students[i] + np.random.rand(self.d) * diff
+                new = np.clip(new, self.lB, self.uB)
+                new_fit = self.function_type(new)
+                evaluations += 1
+                if new_fit < fitness[i]:
+                    students[i] = new
+                    fitness[i] = new_fit
+                    if new_fit < best_value:
+                        best = new.copy()
+                        best_value = new_fit
+
+        return best_value
+
+    def TLBO_run(self):
+        D = 30
+        NP = 30
+        Max_OFE = 3000
+        num_experiments = 30
+        algorithms = ["TLBO", "DE", "PSO", "SOMA", "FA"]
+        functions = [self.sphere, self.ackley, self.rastrigin, self.rosenbrock,
+                    self.griewank, self.schwefel, self.levy, self.michalewicz, self.zakharov]
+
+        self.d = D
+        results = {}
+
+        for func in functions:
+                self.function_type = func
+                func_name = func.__name__
+                print(f"\nRunning {func_name} ...")
+                results[func_name] = {alg: [] for alg in algorithms}
+
+                for alg in algorithms:
+                    print(f"  → {alg}")
+                    for exp in range(num_experiments):
+                        if alg == "TLBO":
+                            val = self.TLBO(NP=NP, Max_OFE=Max_OFE)
+                        elif alg == "FA" and hasattr(self, "Firefly"):
+                            val = self.Firefly(n_fireflies=NP, generations=Max_OFE // NP)
+                        elif alg == "DE" and hasattr(self, "DE"):
+                            val = self.DE(pop_size=NP, Max_OFE=Max_OFE)
+                        elif alg == "PSO" and hasattr(self, "PSO"):
+                            val = self.PSO(swarm_size=NP, Max_OFE=Max_OFE)
+                        elif alg == "SOMA" and hasattr(self, "SOMA"):
+                            val = self.SOMA(pop_size=NP, Max_OFE=Max_OFE)
+                        else:
+                            val = np.nan  # pokud metoda není implementována
+                        # pokud funkce vrací tuple (best, best_value, ...), vezmi jen hodnotu
+                        if isinstance(val, (list, tuple)):
+                            val = val[-1] if np.isscalar(val[-1]) else val[1]
+                        results[func_name][alg].append(val)
+
+        self.export_results_to_excel(results)
+
+    def export_results_to_excel(self, results, filename="results_summary.xlsx"):
+        with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
+            for func_name, alg_results in results.items():
+                df = pd.DataFrame()
+
+                # Naplnění dat pro každý experiment
+                for i in range(30):
+                    row = {"Experiment": i + 1}
+                    for alg_name, values in alg_results.items():
+                        row[alg_name] = values[i]
+                    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+
+                # Přidání řádku s průměrem a std. odchylkou
+                summary_row = {"Experiment": "Mean / StdDev"}
+                for alg_name, values in alg_results.items():
+                    mean = np.mean(values)
+                    std = np.std(values)
+                    summary_row[alg_name] = f"{mean:.4f} / {std:.4f}"
+                df = pd.concat([df, pd.DataFrame([summary_row])], ignore_index=True)
+
+                # Zápis do záložky
+                df.to_excel(writer, sheet_name=func_name.capitalize(), index=False)
+        
+        print(f"\nVýsledky uloženy do souboru {filename}")
 
 # ALGORITHMS MASS CALL
 def blind_search_all(dimensions):
@@ -681,63 +824,63 @@ def simulated_annealing_all(dimensions):
 
 def differencial_eveolution_all(dimensions):
     sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
-    sphere.differencial_evolution()
+    sphere.DE()
     ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
-    ackley.differencial_evolution()
+    ackley.DE()
     rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
-    rastrigin.differencial_evolution()
+    rastrigin.DE()
     rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
-    rosenbrock.differencial_evolution()
+    rosenbrock.DE()
     griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
-    griewank.differencial_evolution()
+    griewank.DE()
     schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
-    schwefel.differencial_evolution()
+    schwefel.DE()
     levy = FunctionVisualizer("levy", dimensions, -10, 10)
-    levy.differencial_evolution()
+    levy.DE()
     michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
-    michalewicz.differencial_evolution()
+    michalewicz.DE()
     zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
-    zakharov.differencial_evolution()
+    zakharov.DE()
 
 def particle_swarm_optimization_all(dimensions):
     sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
-    sphere.particle_swarm_optimization(w=0.5, c1=1.5, c2=1.5)
+    sphere.PSO(w=0.5, c1=1.5, c2=1.5)
     ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
-    ackley.particle_swarm_optimization()
+    ackley.PSO()
     rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
-    rastrigin.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
+    rastrigin.PSO(w=0.7, c1=2.0, c2=2.0)
     rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
-    rosenbrock.particle_swarm_optimization()
+    rosenbrock.PSO()
     griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
-    griewank.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
+    griewank.PSO(w=0.7, c1=2.0, c2=2.0)
     schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
-    schwefel.particle_swarm_optimization(w=0.7, c1=2.0, c2=2.0)
+    schwefel.PSO(w=0.7, c1=2.0, c2=2.0)
     levy = FunctionVisualizer("levy", dimensions, -10, 10)
-    levy.particle_swarm_optimization()
+    levy.PSO()
     michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
-    michalewicz.particle_swarm_optimization()
+    michalewicz.PSO()
     zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
-    zakharov.particle_swarm_optimization()
+    zakharov.PSO()
 
 def SOMA_allToOne_all(dimensions):
     sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
-    sphere.SOMA_allToOne()
+    sphere.SOMA()
     ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
-    ackley.SOMA_allToOne()
+    ackley.SOMA()
     rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
-    rastrigin.SOMA_allToOne()
+    rastrigin.SOMA()
     rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
-    rosenbrock.SOMA_allToOne()
+    rosenbrock.SOMA()
     griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
-    griewank.SOMA_allToOne()
+    griewank.SOMA()
     schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
-    schwefel.SOMA_allToOne()
+    schwefel.SOMA()
     levy = FunctionVisualizer("levy", dimensions, -10, 10)
-    levy.SOMA_allToOne()
+    levy.SOMA()
     michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
-    michalewicz.SOMA_allToOne()
+    michalewicz.SOMA()
     zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
-    zakharov.SOMA_allToOne()
+    zakharov.SOMA()
 
 def Firefly_all(dimensions):
     sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
@@ -760,15 +903,13 @@ def Firefly_all(dimensions):
     zakharov.Firefly()
 # ALGORITHMS MASS CALL
 
-def callAllNoVis(dimesions):
-    blind_search_all(dimesions)
-    hill_climb_all(dimesions)
-    simulated_annealing_all(dimesions)
-    differencial_eveolution_all(dimesions)
-    particle_swarm_optimization_all(dimesions)
-    SOMA_allToOne_all(dimesions)
-    Firefly_all(dimesions)
+def call_TLBO():
+    TLBO = FunctionVisualizer("tlbo", 30, -5.12, 5.12)
+    TLBO.TLBO_run()
+    return
+
+
 
 if __name__ == "__main__":
     print("Start")
-    Firefly_all(2)
+    call_TLBO()
