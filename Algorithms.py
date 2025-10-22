@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 resolution = 500
 graph_folder_name = "graphs_files"
 
-visualiseYesNo = False
+
 
 
 class FunctionVisualizer:
@@ -376,6 +376,7 @@ class FunctionVisualizer:
         # inicializace populace (pop_size x d) náhodných vektorů v d dimenzích
         pop = np.random.uniform(self.lB, self.uB, size=(pop_size, self.d))
         fitness = np.array([self.function_type(ind) for ind in pop])
+        evaluations = pop_size
 
         # počáteční bod náhodně vybraný z předem vypočítaných pro lepší vizualizaci algoritmů
         best_idx = np.argmin(fitness)
@@ -387,8 +388,11 @@ class FunctionVisualizer:
         best_history = [best.copy()]
         best_f_history = [best_val]
         
-        for gen in range(generations):
+        gen = 0
+        while gen < generations and (Max_OFE is None or evaluations < Max_OFE):
             for i in range(pop_size):
+                if Max_OFE is not None and evaluations >= Max_OFE:
+                    break
                 # výběr tří různé index kromě i
                 idxs = list(range(pop_size))
                 idxs = [j for j in range(pop_size) if j != i]
@@ -410,6 +414,9 @@ class FunctionVisualizer:
                 
                 # selekce: pokud je trial lepší než cílový jedinec, nahradí ho
                 trial_fitness = self.function_type(trial)
+                evaluations += 1
+                if Max_OFE is not None and evaluations >= Max_OFE:
+                    break
                 if trial_fitness < fitness[i]:
                     pop[i] = trial
                     fitness[i] = trial_fitness
@@ -421,6 +428,7 @@ class FunctionVisualizer:
             
             best_history.append(best.copy())
             best_f_history.append(best_val)
+            gen += 1
         
         if visualiseYesNo:
             print(f"Differential Evolution result: {best}, f_value: {best_val}")
@@ -481,6 +489,8 @@ class FunctionVisualizer:
                 
                 current_fitness = self.function_type(positions[i])
                 evaluations += 1
+                if Max_OFE is not None and evaluations >= Max_OFE:
+                    break
                 
                 if current_fitness < pbest_values[i]:
                     pbest_positions[i] = positions[i].copy()
@@ -626,6 +636,9 @@ class FunctionVisualizer:
                         
                         # update řešení pro danou světlušku co se posunula
                         light_intensity[i] = self.function_type(fireflies[i])
+                        evaluations += 1
+                        if Max_OFE is not None and evaluations >= Max_OFE:
+                            break
                         if light_intensity[i] < best_value:
                             best = fireflies[i].copy()
                             best_value = light_intensity[i]
@@ -644,6 +657,8 @@ class FunctionVisualizer:
     # ALGORITHMS END
     
     def TLBO(self, NP=30, Max_OFE=3000):
+        X, Y, Z = self.compute()
+        
         # generace studentů (populace)
         students = np.random.uniform(self.lB, self.uB, (NP, self.d))
         fitness = np.array([self.function_type(ind) for ind in students])
@@ -652,6 +667,9 @@ class FunctionVisualizer:
         best_idx = np.argmin(fitness)
         best = students[best_idx].copy()
         best_value = fitness[best_idx]
+
+        best_history = [best.copy()]
+        best_f_history = [best_value]
 
         while evaluations < Max_OFE:
             # každý student se učí od učitele (nejlepšího jedince)
@@ -692,10 +710,19 @@ class FunctionVisualizer:
                     if new_fit < best_value:
                         best = new.copy()
                         best_value = new_fit
-
+            
+            best_history.append(best.copy())
+            best_f_history.append(best_value)
+        
+        if visualiseYesNo:
+            print(f"Firefly result: {best}, f_value: {best_value}")
+        history_coord = np.array([  [v[0] for v in best_history],
+                                    [v[1] for v in best_history],
+                                    best_f_history ])
+        self.visualise(X, Y, Z, "Firefly algorithm", highlight_points=history_coord, best_point=(best[0], best[1], best_value))
         return best_value
 
-    def TLBO_run(self):
+    def Compare_run(self):
         D = 30
         NP = 30
         Max_OFE = 3000
@@ -719,7 +746,7 @@ class FunctionVisualizer:
                         if alg == "TLBO":
                             val = self.TLBO(NP=NP, Max_OFE=Max_OFE)
                         elif alg == "FA" and hasattr(self, "Firefly"):
-                            val = self.Firefly(n_fireflies=NP, generations=Max_OFE // NP)
+                            val = self.Firefly(n_fireflies=NP, Max_OFE=Max_OFE)
                         elif alg == "DE" and hasattr(self, "DE"):
                             val = self.DE(pop_size=NP, Max_OFE=Max_OFE)
                         elif alg == "PSO" and hasattr(self, "PSO"):
@@ -901,15 +928,37 @@ def Firefly_all(dimensions):
     michalewicz.Firefly()
     zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
     zakharov.Firefly()
+    
+def TLBO_all(dimensions):
+    sphere = FunctionVisualizer("sphere", dimensions, -5.12, 5.12)
+    sphere.TLBO()
+    ackley = FunctionVisualizer("ackley", dimensions, -32.768, 32.768)
+    ackley.TLBO()
+    rastrigin = FunctionVisualizer("rastrigin", dimensions, -5.12, 5.12)
+    rastrigin.TLBO()
+    rosenbrock = FunctionVisualizer("rosenbrock", dimensions, -2.048, 2.048)
+    rosenbrock.TLBO()
+    griewank = FunctionVisualizer("griewank", dimensions, -10, 10)
+    griewank.TLBO()
+    schwefel = FunctionVisualizer("schwefel", dimensions, -500, 500)
+    schwefel.TLBO()
+    levy = FunctionVisualizer("levy", dimensions, -10, 10)
+    levy.TLBO()
+    michalewicz = FunctionVisualizer("michalewicz", dimensions, 0, np.pi)
+    michalewicz.TLBO()
+    zakharov = FunctionVisualizer("zakharov", dimensions, -10, 10)
+    zakharov.TLBO()
 # ALGORITHMS MASS CALL
 
-def call_TLBO():
-    TLBO = FunctionVisualizer("tlbo", 30, -5.12, 5.12)
-    TLBO.TLBO_run()
+
+
+def call_excel():
+    excel = FunctionVisualizer("tlbo", 30, -5.12, 5.12)
+    excel.Compare_run()
     return
 
 
-
+visualiseYesNo = True
 if __name__ == "__main__":
     print("Start")
-    call_TLBO()
+    TLBO_all(2)
